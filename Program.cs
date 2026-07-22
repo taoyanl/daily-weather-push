@@ -499,7 +499,8 @@ class Program
             token = PUSH_TOKEN,
             title = title,
             content = content,
-            template = "txt"
+            template = "txt",
+            topic = "2630"
         };
 
         try
