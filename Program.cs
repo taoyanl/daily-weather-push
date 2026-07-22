@@ -18,30 +18,6 @@ class Program
     static readonly HttpClient http = new HttpClient();
     static readonly Random rnd = new Random();
 
-    // 城市经纬度表（Open-Meteo 备用源）
-    static readonly Dictionary<string, (double lat, double lon)> CITY_COORDS = new()
-    {
-        ["101010100"] = (39.90, 116.41), ["101020100"] = (31.23, 121.47),
-        ["101280101"] = (23.13, 113.26), ["101280601"] = (22.54, 114.06),
-        ["101030100"] = (39.13, 117.20), ["101040100"] = (29.56, 106.55),
-        ["101050101"] = (45.75, 126.63), ["101060101"] = (43.82, 125.32),
-        ["101070101"] = (41.80, 123.43), ["101080101"] = (40.84, 111.75),
-        ["101090101"] = (38.04, 114.51), ["101100101"] = (37.87, 112.55),
-        ["101110101"] = (34.27, 108.95), ["101120101"] = (36.65, 117.12),
-        ["101130101"] = (43.79, 87.62),  ["101140101"] = (36.06, 103.83),
-        ["101150101"] = (36.62, 101.78), ["101160101"] = (38.49, 106.23),
-        ["101170101"] = (36.06, 120.38), ["101180101"] = (34.75, 113.65),
-        ["101190101"] = (32.06, 118.78), ["101200101"] = (30.59, 114.31),
-        ["101210101"] = (30.25, 120.16), ["101220101"] = (31.86, 117.28),
-        ["101230101"] = (26.08, 119.30), ["101240101"] = (28.68, 115.88),
-        ["101250101"] = (28.23, 112.98), ["101260101"] = (26.65, 106.63),
-        ["101270101"] = (30.67, 104.07), ["101280201"] = (23.02, 113.12),
-        ["101280401"] = (22.27, 113.57), ["101290101"] = (25.04, 102.71),
-        ["101300101"] = (22.82, 108.32), ["101310101"] = (20.02, 110.35),
-        ["101320101"] = (22.32, 114.17), ["101330101"] = (22.20, 113.55),
-        ["101340101"] = (25.03, 121.56),
-    };
-
     // WMO 天气代码映射
     static readonly Dictionary<int, string> WMO_WEATHER = new()
     {
@@ -108,11 +84,11 @@ class Program
             return;
         }
 
-        // 先尝试和风天气
-        WeatherData? now = null;
-        ForecastData? forecast = null;
+        WeatherData now = null;
+        ForecastData forecast = null;
         string source = "";
 
+        // 先尝试和风天气
         if (!string.IsNullOrEmpty(WEATHER_KEY))
         {
             Console.WriteLine("🔄 尝试和风天气...");
@@ -128,7 +104,7 @@ class Program
             }
         }
 
-        // 备用源
+        // 备用源：Open-Meteo
         if (now == null)
         {
             Console.WriteLine("🔄 尝试 Open-Meteo 备用源...");
@@ -156,7 +132,7 @@ class Program
     }
 
     // ========== 和风天气 ==========
-    static async Task<(WeatherData?, ForecastData?)> GetWeatherQweatherAsync()
+    static async Task<(WeatherData, ForecastData)> GetWeatherQweatherAsync()
     {
         try
         {
@@ -186,7 +162,7 @@ class Program
             var forecastResp = await http.GetStringAsync(forecastUrl);
             var forecastJson = JsonDocument.Parse(forecastResp);
             var fcode = forecastJson.RootElement.GetProperty("code").GetString();
-            ForecastData? forecastData = null;
+            ForecastData forecastData = null;
             if (fcode == "200" && forecastJson.RootElement.TryGetProperty("daily", out var dailyArr) && dailyArr.GetArrayLength() > 0)
             {
                 var d0 = dailyArr[0];
@@ -206,7 +182,6 @@ class Program
         }
     }
 
-    // 安全获取 JsonElement 的字符串值
     static string GetStringOrDefault(JsonElement element, string propertyName, string defaultValue)
     {
         if (element.TryGetProperty(propertyName, out var prop))
@@ -219,18 +194,31 @@ class Program
         return defaultValue;
     }
 
-    // ========== Open-Meteo 备用源 ==========
-    static async Task<(WeatherData?, ForecastData?)> GetWeatherOpenMeteoAsync()
+    // ========== Open-Meteo 备用源（通过城市名自动查经纬度） ==========
+    static async Task<(WeatherData, ForecastData)> GetWeatherOpenMeteoAsync()
     {
-        if (!CITY_COORDS.TryGetValue(CITY_ID, out var coords))
-        {
-            Console.WriteLine($"未找到城市 {CITY_ID} 的经纬度，无法使用备用天气源");
-            return (null, null);
-        }
-
         try
         {
-            var url = $"https://api.open-meteo.com/v1/forecast?latitude={coords.lat}&longitude={coords.lon}" +
+            // 第一步：通过城市名查询经纬度
+            var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(CITY_NAME)}&count=1&language=zh&format=json";
+            Console.WriteLine($"🔍 查询城市经纬度: {CITY_NAME}");
+            var geoResp = await http.GetStringAsync(geoUrl);
+            var geoJson = JsonDocument.Parse(geoResp);
+
+            if (!geoJson.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
+            {
+                Console.WriteLine($"未找到城市 "{CITY_NAME}" 的经纬度信息");
+                return (null, null);
+            }
+
+            var city = results[0];
+            double lat = city.GetProperty("latitude").GetDouble();
+            double lon = city.GetProperty("longitude").GetDouble();
+            string resolvedName = city.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : CITY_NAME;
+            Console.WriteLine($"📍 定位成功: {resolvedName} ({lat}, {lon})");
+
+            // 第二步：用经纬度获取天气
+            var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}" +
                       $"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,visibility" +
                       $"&daily=temperature_2m_max,temperature_2m_min,weather_code" +
                       $"&timezone=Asia%2FShanghai";
@@ -340,9 +328,9 @@ class Program
     }
 
     // ========== 恋爱天数 ==========
-    static int? GetLoveDays()
+    static int GetLoveDays()
     {
-        if (string.IsNullOrEmpty(START_DATE)) return null;
+        if (string.IsNullOrEmpty(START_DATE)) return 0;
         try
         {
             var start = DateTime.ParseExact(START_DATE, "yyyy-MM-dd", null);
@@ -350,17 +338,17 @@ class Program
         }
         catch
         {
-            return null;
+            return 0;
         }
     }
 
     // ========== 构建消息 ==========
-    static (string title, string content) BuildMessage(WeatherData now, ForecastData? forecast)
+    static (string title, string content) BuildMessage(WeatherData now, ForecastData forecast)
     {
         string quote = LOVE_QUOTES[rnd.Next(LOVE_QUOTES.Length)];
         string clothing = GetClothingAdvice(now.Temp, now.Humidity, now.Text);
-        int? loveDays = GetLoveDays();
-        string loveInfo = loveDays.HasValue ? $"\n💕 今天是我们的第 {loveDays.Value} 天" : "";
+        int loveDays = GetLoveDays();
+        string loveInfo = loveDays > 0 ? $"\n💕 今天是我们的第 {loveDays} 天" : "";
 
         string todayStr = DateTime.Now.ToString("yyyy年MM月dd日");
         string[] weekdays = { "周日", "周一", "周二", "周三", "周四", "周五", "周六" };
@@ -375,7 +363,7 @@ class Program
 🌤 今日天气
 • 天气状况：{now.Text}
 • 实时温度：{now.Temp}℃（体感 {now.FeelsLike}℃）
-• 今日气温：{(forecast?.TempMin ?? "--")}℃ ~ {(forecast?.TempMax ?? "--")}℃
+• 今日气温：{(forecast != null ? forecast.TempMin : "--")}℃ ~ {(forecast != null ? forecast.TempMax : "--")}℃
 • 湿度：{now.Humidity}%
 • 风向风力：{now.WindDir} {now.WindScale}级
 • 能见度：{now.Vis}km
