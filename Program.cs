@@ -173,13 +173,13 @@ class Program
             var now = nowJson.RootElement.GetProperty("now");
             var nowData = new WeatherData
             {
-                Temp = now.GetProperty("temp").GetString() ?? "--",
-                FeelsLike = now.GetProperty("feelsLike").GetString() ?? "--",
-                Humidity = now.GetProperty("humidity").GetString() ?? "--",
-                Text = now.GetProperty("text").GetString() ?? "未知",
-                WindDir = now.GetProperty("windDir").GetString() ?? "--",
-                WindScale = now.GetProperty("windScale").GetString() ?? "--",
-                Vis = now.TryGetProperty("vis", out var visProp) ? visProp.GetString() : "--",
+                Temp = GetStringOrDefault(now, "temp", "--"),
+                FeelsLike = GetStringOrDefault(now, "feelsLike", "--"),
+                Humidity = GetStringOrDefault(now, "humidity", "--"),
+                Text = GetStringOrDefault(now, "text", "未知"),
+                WindDir = GetStringOrDefault(now, "windDir", "--"),
+                WindScale = GetStringOrDefault(now, "windScale", "--"),
+                Vis = GetStringOrDefault(now, "vis", "--"),
             };
 
             var forecastUrl = $"https://devapi.qweather.com/v7/weather/3d?location={CITY_ID}&key={WEATHER_KEY}";
@@ -192,8 +192,8 @@ class Program
                 var d0 = dailyArr[0];
                 forecastData = new ForecastData
                 {
-                    TempMax = d0.GetProperty("tempMax").GetString() ?? "--",
-                    TempMin = d0.GetProperty("tempMin").GetString() ?? "--",
+                    TempMax = GetStringOrDefault(d0, "tempMax", "--"),
+                    TempMin = GetStringOrDefault(d0, "tempMin", "--"),
                 };
             }
 
@@ -204,6 +204,19 @@ class Program
             Console.WriteLine($"和风天气请求异常: {ex.Message}");
             return (null, null);
         }
+    }
+
+    // 安全获取 JsonElement 的字符串值
+    static string GetStringOrDefault(JsonElement element, string propertyName, string defaultValue)
+    {
+        if (element.TryGetProperty(propertyName, out var prop))
+        {
+            if (prop.ValueKind == JsonValueKind.String)
+                return prop.GetString() ?? defaultValue;
+            if (prop.ValueKind == JsonValueKind.Number)
+                return prop.GetRawText();
+        }
+        return defaultValue;
     }
 
     // ========== Open-Meteo 备用源 ==========
