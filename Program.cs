@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 
 class Program
 {
-    // ========== 配置 ==========
     static readonly string PUSH_TOKEN = Environment.GetEnvironmentVariable("PUSH_TOKEN") ?? "";
     static readonly string WEATHER_KEY = Environment.GetEnvironmentVariable("WEATHER_KEY") ?? "";
     static readonly string CITY_ID = Environment.GetEnvironmentVariable("CITY_ID") ?? "101010100";
@@ -18,24 +17,22 @@ class Program
     static readonly HttpClient http = new HttpClient();
     static readonly Random rnd = new Random();
 
-    // WMO 天气代码映射
-    static readonly Dictionary<int, string> WMO_WEATHER = new()
+    static readonly Dictionary<int, string> WMO_WEATHER = new Dictionary<int, string>
     {
-        [0] = "晴", [1] = "晴", [2] = "多云", [3] = "阴",
-        [45] = "雾", [48] = "雾凇",
-        [51] = "毛毛雨", [53] = "小雨", [55] = "中雨",
-        [56] = "冻雨", [57] = "冻雨",
-        [61] = "小雨", [63] = "中雨", [65] = "大雨",
-        [66] = "冻雨", [67] = "冻雨",
-        [71] = "小雪", [73] = "中雪", [75] = "大雪",
-        [77] = "雪粒",
-        [80] = "阵雨", [81] = "强阵雨", [82] = "暴雨",
-        [85] = "阵雪", [86] = "强阵雪",
-        [95] = "雷阵雨", [96] = "雷阵雨伴冰雹", [99] = "强雷阵雨伴冰雹",
+        { 0, "晴" }, { 1, "晴" }, { 2, "多云" }, { 3, "阴" },
+        { 45, "雾" }, { 48, "雾凇" },
+        { 51, "毛毛雨" }, { 53, "小雨" }, { 55, "中雨" },
+        { 56, "冻雨" }, { 57, "冻雨" },
+        { 61, "小雨" }, { 63, "中雨" }, { 65, "大雨" },
+        { 66, "冻雨" }, { 67, "冻雨" },
+        { 71, "小雪" }, { 73, "中雪" }, { 75, "大雪" },
+        { 77, "雪粒" },
+        { 80, "阵雨" }, { 81, "强阵雨" }, { 82, "暴雨" },
+        { 85, "阵雪" }, { 86, "强阵雪" },
+        { 95, "雷阵雨" }, { 96, "雷阵雨伴冰雹" }, { 99, "强雷阵雨伴冰雹" },
     };
 
-    // 情话库
-    static readonly string[] LOVE_QUOTES = new[]
+    static readonly string[] LOVE_QUOTES = new string[]
     {
         "今天也是爱你的一天，比昨天多一点，比明天少一点。",
         "你是我这辈子最美的意外。",
@@ -88,7 +85,7 @@ class Program
         ForecastData forecast = null;
         string source = "";
 
-        // 先尝试和风天气
+        // 尝试和风天气（新版 Bearer Token + 自定义 Host）
         if (!string.IsNullOrEmpty(WEATHER_KEY))
         {
             Console.WriteLine("🔄 尝试和风天气...");
@@ -123,26 +120,35 @@ class Program
         }
 
         Console.WriteLine($"📡 数据来源: {source}");
-        var (title, content) = BuildMessage(now, forecast);
-        Console.WriteLine($"\n📨 推送标题: {title}");
-        Console.WriteLine($"📨 推送内容预览:\n{content}");
+        var result = BuildMessage(now, forecast);
+        Console.WriteLine($"\n📨 推送标题: {result.title}");
+        Console.WriteLine($"📨 推送内容预览:\n{result.content}");
 
-        await PushMessageAsync(title, content);
+        await PushMessageAsync(result.title, result.content);
         Console.WriteLine("🎉 任务执行完毕！");
     }
 
-    // ========== 和风天气 ==========
+    // ========== 和风天气（新版 Bearer Token） ==========
     static async Task<(WeatherData, ForecastData)> GetWeatherQweatherAsync()
     {
+        string host = "pa7mdbrqnq.re.qweatherapi.com";
         try
         {
-            var nowUrl = $"https://devapi.qweather.com/v7/weather/now?location={CITY_ID}&key={WEATHER_KEY}";
-            var nowResp = await http.GetStringAsync(nowUrl);
+            // 实时天气
+            var nowUrl = $"https://{host}/v7/weather/now?location={CITY_ID}&lang=zh";
+            var nowRequest = new HttpRequestMessage(HttpMethod.Get, nowUrl);
+            nowRequest.Headers.Add("Authorization", $"Bearer {WEATHER_KEY}");
+            nowRequest.Headers.Add("Accept-Encoding", "gzip");
+
+            var nowResponse = await http.SendAsync(nowRequest);
+            var nowResp = await nowResponse.Content.ReadAsStringAsync();
+            Console.WriteLine($"  和风天气响应: {nowResp}");
+
             var nowJson = JsonDocument.Parse(nowResp);
             var code = nowJson.RootElement.GetProperty("code").GetString();
             if (code != "200")
             {
-                Console.WriteLine($"和风天气实时天气失败: {nowResp}");
+                Console.WriteLine($"  和风天气实时天气失败: code={code}");
                 return (null, null);
             }
 
@@ -158,8 +164,14 @@ class Program
                 Vis = GetStringOrDefault(now, "vis", "--"),
             };
 
-            var forecastUrl = $"https://devapi.qweather.com/v7/weather/3d?location={CITY_ID}&key={WEATHER_KEY}";
-            var forecastResp = await http.GetStringAsync(forecastUrl);
+            // 3天预报
+            var forecastUrl = $"https://{host}/v7/weather/3d?location={CITY_ID}&lang=zh";
+            var forecastRequest = new HttpRequestMessage(HttpMethod.Get, forecastUrl);
+            forecastRequest.Headers.Add("Authorization", $"Bearer {WEATHER_KEY}");
+            forecastRequest.Headers.Add("Accept-Encoding", "gzip");
+
+            var forecastResponse = await http.SendAsync(forecastRequest);
+            var forecastResp = await forecastResponse.Content.ReadAsStringAsync();
             var forecastJson = JsonDocument.Parse(forecastResp);
             var fcode = forecastJson.RootElement.GetProperty("code").GetString();
             ForecastData forecastData = null;
@@ -177,7 +189,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"和风天气请求异常: {ex.Message}");
+            Console.WriteLine($"  和风天气请求异常: {ex.Message}");
             return (null, null);
         }
     }
@@ -194,12 +206,11 @@ class Program
         return defaultValue;
     }
 
-    // ========== Open-Meteo 备用源（通过城市名自动查经纬度） ==========
+    // ========== Open-Meteo 备用源 ==========
     static async Task<(WeatherData, ForecastData)> GetWeatherOpenMeteoAsync()
     {
         try
         {
-            // 第一步：通过城市名查询经纬度
             var geoUrl = $"https://geocoding-api.open-meteo.com/v1/search?name={Uri.EscapeDataString(CITY_NAME)}&count=1&language=zh&format=json";
             Console.WriteLine($"🔍 查询城市经纬度: {CITY_NAME}");
             var geoResp = await http.GetStringAsync(geoUrl);
@@ -207,7 +218,7 @@ class Program
 
             if (!geoJson.RootElement.TryGetProperty("results", out var results) || results.GetArrayLength() == 0)
             {
-                Console.WriteLine($"未找到城市 "{CITY_NAME}" 的经纬度信息");
+                Console.WriteLine($"未找到城市 \"{CITY_NAME}\" 的经纬度信息");
                 return (null, null);
             }
 
@@ -217,7 +228,6 @@ class Program
             string resolvedName = city.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : CITY_NAME;
             Console.WriteLine($"📍 定位成功: {resolvedName} ({lat}, {lon})");
 
-            // 第二步：用经纬度获取天气
             var url = $"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}" +
                       $"&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,visibility" +
                       $"&daily=temperature_2m_max,temperature_2m_min,weather_code" +
@@ -230,7 +240,7 @@ class Program
             var daily = json.RootElement.GetProperty("daily");
 
             int wmoCode = current.GetProperty("weather_code").GetInt32();
-            string weatherText = WMO_WEATHER.TryGetValue(wmoCode, out var wt) ? wt : "未知";
+            string weatherText = WMO_WEATHER.ContainsKey(wmoCode) ? WMO_WEATHER[wmoCode] : "未知";
 
             double windDeg = current.GetProperty("wind_direction_10m").GetDouble();
             string windDir = AngleToDirection(windDeg);
@@ -288,7 +298,6 @@ class Program
         return 12;
     }
 
-    // ========== 穿衣建议 ==========
     static string GetClothingAdvice(string tempStr, string humidityStr, string weatherText)
     {
         var advice = new List<string>();
@@ -327,7 +336,6 @@ class Program
         return string.Join("\n", advice);
     }
 
-    // ========== 恋爱天数 ==========
     static int GetLoveDays()
     {
         if (string.IsNullOrEmpty(START_DATE)) return 0;
@@ -342,7 +350,6 @@ class Program
         }
     }
 
-    // ========== 构建消息 ==========
     static (string title, string content) BuildMessage(WeatherData now, ForecastData forecast)
     {
         string quote = LOVE_QUOTES[rnd.Next(LOVE_QUOTES.Length)];
@@ -386,7 +393,6 @@ class Program
         return (title, content);
     }
 
-    // ========== PushPlus 推送 ==========
     static async Task PushMessageAsync(string title, string content)
     {
         var payload = new
@@ -422,7 +428,6 @@ class Program
     }
 }
 
-// ========== 数据模型 ==========
 class WeatherData
 {
     public string Temp { get; set; } = "";
