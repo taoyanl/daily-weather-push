@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -14,7 +15,11 @@ class Program
     static readonly string CITY_NAME = Environment.GetEnvironmentVariable("CITY_NAME") ?? "北京";
     static readonly string START_DATE = Environment.GetEnvironmentVariable("START_DATE") ?? "";
 
-    static readonly HttpClient http = new HttpClient();
+    // HttpClient 配置：自动解压 gzip
+    static readonly HttpClient http = new HttpClient(new HttpClientHandler
+    {
+        AutomaticDecompression = DecompressionMethods.GZip
+    });
     static readonly Random rnd = new Random();
 
     static readonly Dictionary<int, string> WMO_WEATHER = new Dictionary<int, string>
@@ -85,7 +90,7 @@ class Program
         ForecastData forecast = null;
         string source = "";
 
-        // 尝试和风天气（新版 Bearer Token + 自定义 Host）
+        // 尝试和风天气
         if (!string.IsNullOrEmpty(WEATHER_KEY))
         {
             Console.WriteLine("🔄 尝试和风天气...");
@@ -128,7 +133,7 @@ class Program
         Console.WriteLine("🎉 任务执行完毕！");
     }
 
-    // ========== 和风天气（新版 Bearer Token） ==========
+    // ========== 和风天气（新版 Bearer Token + gzip 解压） ==========
     static async Task<(WeatherData, ForecastData)> GetWeatherQweatherAsync()
     {
         string host = "pa7mdbrqnq.re.qweatherapi.com";
@@ -138,11 +143,10 @@ class Program
             var nowUrl = $"https://{host}/v7/weather/now?location={CITY_ID}&lang=zh";
             var nowRequest = new HttpRequestMessage(HttpMethod.Get, nowUrl);
             nowRequest.Headers.Add("Authorization", $"Bearer {WEATHER_KEY}");
-            nowRequest.Headers.Add("Accept-Encoding", "gzip");
 
             var nowResponse = await http.SendAsync(nowRequest);
             var nowResp = await nowResponse.Content.ReadAsStringAsync();
-            Console.WriteLine($"  和风天气响应: {nowResp}");
+            Console.WriteLine($"  和风天气响应: {nowResp.Substring(0, Math.Min(nowResp.Length, 200))}");
 
             var nowJson = JsonDocument.Parse(nowResp);
             var code = nowJson.RootElement.GetProperty("code").GetString();
@@ -168,7 +172,6 @@ class Program
             var forecastUrl = $"https://{host}/v7/weather/3d?location={CITY_ID}&lang=zh";
             var forecastRequest = new HttpRequestMessage(HttpMethod.Get, forecastUrl);
             forecastRequest.Headers.Add("Authorization", $"Bearer {WEATHER_KEY}");
-            forecastRequest.Headers.Add("Accept-Encoding", "gzip");
 
             var forecastResponse = await http.SendAsync(forecastRequest);
             var forecastResp = await forecastResponse.Content.ReadAsStringAsync();
