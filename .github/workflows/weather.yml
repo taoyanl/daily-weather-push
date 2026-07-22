@@ -1,0 +1,27 @@
+name: Daily Weather Push
+
+on:
+  schedule:
+    - cron: '30 23 * * *'  # UTC 23:30 = 北京时间 7:30
+  workflow_dispatch:
+
+jobs:
+  push-weather:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Run weather push
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
+          WEATHER_KEY: ${{ secrets.WEATHER_KEY }}
+          CITY_ID: ${{ secrets.CITY_ID }}
+          CITY_NAME: ${{ secrets.CITY_NAME }}
+          START_DATE: ${{ secrets.START_DATE }}
+        run: dotnet run --project WeatherPush.csproj
