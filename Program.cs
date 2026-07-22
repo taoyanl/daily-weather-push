@@ -72,11 +72,11 @@ class Program
 
     static readonly string[] MORNING_GREETINGS = new string[]
     {
-        "早安呀宝贝～",
-        "起床啦小懒猪～",
-        "新的一天开始啦！",
-        "太阳晒屁股啦～",
-        "早安，我的全世界～",
+        "早安呀，小媛咪～",
+        "起床啦小媛咪～",
+        "咪，新的一天开始啦！",
+        "太阳晒屁股啦，媛咪～",
+        "早安，我的咪～",
     };
 
     static async Task Main(string[] args)
