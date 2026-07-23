@@ -2,7 +2,7 @@ name: Daily Weather Push
 
 on:
   schedule:
-    - cron: '30 0 * * *'  # UTC 00:30 = 北京时间 8:30
+    - cron: '20 0 * * *'  # UTC 00:30 = 北京时间 8:30
   workflow_dispatch:
 
 jobs:
