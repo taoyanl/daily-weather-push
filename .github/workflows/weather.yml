@@ -2,7 +2,7 @@ name: Daily Weather Push
 
 on:
   schedule:
-    - cron: '30 23 * * *'
+    - cron: '00 23 * * *'
   workflow_dispatch:
 
 jobs:
